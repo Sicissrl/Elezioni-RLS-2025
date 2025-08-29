@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Votazioni RLS Sicis</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    :root { --primary:#fff; --secondary:#121212; --bg:#121212; --card-bg:#1e1e1e; --text:#e0e0e0; --shadow:rgba(0,0,0,.5); --radius:16px; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body, html { height:100%; font-family:'Inter', sans-serif; background:var(--bg); color:var(--text); display:flex; align-items:center; justify-content:center; }
+    .screen { display:none; width:100%; max-width:360px; background:var(--card-bg); border-radius:var(--radius); box-shadow:0 4px 16px var(--shadow); text-align:center; padding:40px 20px; margin:20px; }
+    .active { display:block; }
+    .logo { width:120px; margin:0 auto 20px; }
+    h1 { font-size:1.5rem; margin-bottom:10px; font-weight:600; color:var(--primary); }
+    p { font-size:1rem; margin-bottom:20px; color:var(--text); }
+    input { width:100%; max-width:240px; padding:12px; margin-bottom:20px; border-radius:var(--radius); border:none; font-size:1rem; }
+    button { background:var(--primary); color:var(--secondary); border:none; border-radius:var(--radius); padding:12px 24px; font-size:1rem; font-weight:600; cursor:pointer; box-shadow:0 4px 8px var(--shadow); transition:transform .1s, box-shadow .1s; width:100%; max-width:240px; margin:0 auto; }
+    button:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 6px 12px var(--shadow); }
+    button:disabled { background:#555; cursor:not-allowed; box-shadow:none; }
+    .candidates { display:flex; flex-direction:column; gap:12px; align-items:center; margin-bottom:20px; }
+    .candidateBtn { background:var(--card-bg); color:var(--text); border:2px solid var(--text); border-radius:var(--radius); padding:12px; width:100%; max-width:240px; text-align:left; }
+    .candidateBtn.selected { background:var(--primary); color:var(--secondary); border-color:var(--primary); }
+    .results p { font-size:1rem; margin:8px 0; color:var(--text); }
+    #countdown { position:fixed; top:0; left:0; width:100%; background:var(--primary); color:var(--secondary); text-align:center; padding:8px; font-size:.9rem; z-index:1001; }
+    #introModal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.8); color:var(--text); display:flex; align-items:center; justify-content:center; z-index:1000; }
+    #introContent { background:var(--card-bg); padding:20px; border-radius:var(--radius); max-width:320px; text-align:left; }
+  </style>
+</head>
+<body>
+
+  <div id="introModal"><div id="introContent"></div></div>
+
+  <div id="loginScreen" class="screen">
+    <img src="https://i.postimg.cc/4NVMBxBX/logo-sicis.png" class="logo" alt="Logo Sicis">
+    <h1>Login</h1>
+    <input id="nameInput" type="text" placeholder="Inserisci Nome Cognome">
+    <button id="loginBtn" disabled>Accedi</button>
+    <p style="font-size:0.8rem; color:var(--text); margin-top:8px;">Inserisci nome e cognome completi con iniziali maiuscole. Se hai più nomi o cognomi, inseriscili per intero.</p>
+  </div>
+
+  <div id="welcomeScreen" class="screen">
+    <img src="https://i.postimg.cc/4NVMBxBX/logo-sicis.png" class="logo" alt="Logo Sicis">
+    <h1>Benvenuto!</h1>
+    <p>Stai partecipando alle votazioni per RLS per conto di Sicis.</p>
+    <button id="startVoteBtn">Voglio votare</button>
+  </div>
+
+  <div id="voteScreen" class="screen">
+    <h1>Chi vuoi votare?</h1>
+    <div class="candidates">
+      <button class="candidateBtn" data-name="Cristina Antonelli">Cristina Antonelli</button>
+      <button class="candidateBtn" data-name="Cristina Pol">Cristina Pol</button>
+      <button class="candidateBtn" data-name="Mi astengo">Mi astengo</button>
+    </div>
+    <button id="submitVoteBtn" disabled>Invia il voto</button>
+  </div>
+
+  <div id="resultScreen" class="screen">
+    <img src="https://i.postimg.cc/4NVMBxBX/logo-sicis.png" class="logo" alt="Logo Sicis">
+    <h1>Grazie di aver votato!</h1>
+    <div class="results">
+      <p id="votesCount">Voti totali: 0</p>
+      <p id="leading">In testa: -</p>
+    </div>
+    <button id="backLoginBtn">Torna al login</button>
+    <button id="resetVotesBtn" style="display:none;">Reset voti</button>
+  </div>
+
+  <!-- Firebase compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+  <script>
+    // Initialize Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyCE0TNZDQDvjBBxbB2W1rKaT_6RYg-pw4g",
+      authDomain: "votazionisicis.firebaseapp.com",
+      databaseURL: "https://votazionisicis-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "votazionisicis",
+      storageBucket: "votazionisicis.firebasestorage.app",
+      messagingSenderId: "109175816237",
+      appId: "1:109175816237:web:f3b85dc125c14a1a96f8a4",
+      measurementId: "G-YXPVBGE0HJ"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    window.fetchGlobalVotes = async () => {
+      const snapshot = await db.ref('votes').once('value');
+      const data = snapshot.val() || {};
+      return {
+        'Cristina Antonelli': data['Cristina Antonelli'] || 0,
+        'Cristina Pol': data['Cristina Pol'] || 0,
+        'Mi astengo': data['Mi astengo'] || 0
+      };
+    };
+
+    window.sendVote = async (candidate) => {
+      await db.ref(`votes/${candidate}`).transaction(current => (current || 0) + 1);
+    };
+
+    window.resetVotes = async () => {
+      await db.ref('votes').set({
+        'Cristina Antonelli': 0,
+        'Cristina Pol': 0,
+        'Mi astengo': 0
+      });
+    };
+  </script>
+
+  <script>
+
+
+    // Intro Modal Steps
+    const introContent = document.getElementById('introContent');
+    const introSteps = [
+      `<p>È arrivato il momento di esprimere il vostro voto per la nomina del Rappresentante dei Lavoratori per la Sicurezza (RLS) della nostra azienda, Sicis. La votazione terminerà il 10 ottobre</p><button id="introBtn">Avanti</button>`,
+      `<p><strong>Disclaimer:</strong> Il voto è completamente anonimo: nessun dato personale (badge o nome) viene registrato insieme alla vostra scelta.</p><button id="introBtn">Ho capito</button>`
+    ];
+    let currentStep = 0;
+    function renderIntro() {
+      introContent.innerHTML = introSteps[currentStep];
+      document.getElementById('introBtn').addEventListener('click', () => {
+        currentStep++;
+        if (currentStep < introSteps.length) renderIntro();
+        else { document.getElementById('introModal').style.display = 'none'; document.getElementById('loginScreen').classList.add('active'); }
+      });
+    }
+    renderIntro();
+
+    // Login
+    const nameInput = document.getElementById('nameInput');
+    const loginBtn = document.getElementById('loginBtn');
+    const allowedNames = [
+      "Marina Alicò", "Federica Argelli", "Emanuela Barani", "Stefania Bondi", "Morena Candoli", "Alessia Carlini", "Clizia Chiodo Ausiliatrice", "Mariateresa De Palma","Federico Agostini", "Marianna Piscitello", "Mattia Giorgini", "Khadim Gning", "Andy Matteucci", "Joseph Pirone", "Ester Francesca D’Antini", "Giorgia Gianfanti", "Valentina Purpura", "Daniela Louro de Pontes", "Kaba Camara", "Antonio Italo Ferri", "Daniela Guerra", "Silvia Martini", "Gabriele Polizzi", "Sara Segurini", "Valentina Severi", "Maria Chiara Visani", "Barbara Zanelli", "Giorgia Bagnare­si", "Paolo Bianchini", "Carlo Biffi", "Bianca Bonetti", "Ilona Brydko", "Michele Carriero", "Marco Conficconi", "Luigi De Monte", "Matteo Eleuteri", "Irene Folicaldi", "Volodymyr Gorobiovskyj", "Michele Guerzoni", "Abdelrehim Ayman Khairy", "Matteo Merighi", "Stefano Montaguti", "Enrico Monti", "Francesco Montini", "Riccardo Pacelli", "Andrea Pasini", "Gioia Placuzzi", "Valentino Pulcini", "Riccardo Romualdi", "Bodo Stefan Friedemann Hans Hermann Scherf", "Raffaele Schiffo", "Andreas Schilhan", "Giuseppe Sereno", "Marcello Tassinari", "Fabio Tramonti", "Simone Vichi", "Simone Zaoli", "Federico Agostini", "Gianluca Comandini", "Giuseppe D’Acunto", "Annarita Gaddoni", "Dario Genovese", "Alessandro Ghinassi", "Antonio Linzarini", "Marianna Piscitello", "Florian Nicolae Pop", "Matilde Pugliese", "Viola Rambelli", "Francesco Simone Savioli", "Giulia Serina", "Alberto Tarozzi", "Vincenzo Amendola", "Mohammed Asrir", "Luca Caeto", "Alex Caselli", "Francesco Costanza", "Stefano Cutri", "Enrico Esposti", "Michele Farinella", "Omar Kamouni", "Mario Lippi", "Stefano Pollini", "Giovanni Ricciardi", "Stefano Santilli", "Andrea Sedioli", "Mattia Giorgini", "Khadim Gning", "Andy Matteucci", "Joseph Pirone", "Gabriella Russo", "Franca Assirelli", "Marzia Contucci", "Ester Francesca D’Antini", "Andrea Viviana Fassora", "Luisa Festinese", "Silvia Foschini", "Nicoletta Franceschini", "Giorgia Gianfanti", "Monica Iachetti", "Cristina Pistolato", "Cristina Pol", "Valentina Purpura", "Elisa Sebastiani", "Cristina Vernocchi", "Rosita Aldini", "Cristina Antonelli", "Samantha Argazzini", "Nicoletta Atzeni", "Samira Berardi", "Assunta Capece", "Stefania Danelon", "Caterina Mazzotti", "Morena Morelli", "Morena Ponti", "Barbara Rivalta", "Antonietta Valerio", "Andrea Grassilli", "Gianluca Magrini", "Mario Hector Miscioscia", "Matteo Missiroli", "Cesar Eduardo Navarro", "Raoul Poli", "Luca Scarpellini", "Giuseppe Vetrugno", "Valerio Sodini", "Federico Alberto Calvetti", "Matteo Crisi", "Cecilia Ferrari", "Silvia Iannace", "Andrea Flamminj", "Jessica Fraccaroli", "Daniela Louro de Pontes", "Beilei Wang", "Claudio Farinella", "Paola Mengozzi", "Nataliya Polyakova", "Marilena Radoi", "Vincenza Russo", "Elisa Alboni", "Alessia Evangelista", "Maria La Rosa", "Sebastiano Aloisi", "Kaba Camara", "Salvatore Guarino", "Sauro Neri", "Riccardo Perra", "Luigi Polizzi", "Walter Seminara", "Michele Sfrella", "Gianni Silvagni", "Simone Tardozzi", "Marco Scaioli", "Davide Mazzotti", "Davide Nani", "Giuseppe Solito", "Bruno Guerrini", "Michele Iannantuoni", "Chiara Corsi", "Omar Comi", "Gabriella Lanfranchi", "Giulia Nisoli", "Floriana Placidi"
+    ];
+    const adminCode = '0544469701';
+    nameInput.addEventListener('input', () => {
+      const val = nameInput.value.trim();
+      loginBtn.disabled = !(allowedNames.includes(val) || val === adminCode);
+    });
+
+    // Screens
+    const loginScreen = document.getElementById('loginScreen');
+    const welcomeScreen = document.getElementById('welcomeScreen');
+    const voteScreen = document.getElementById('voteScreen');
+    const resultScreen = document.getElementById('resultScreen');
+    const submitBtn = document.getElementById('submitVoteBtn');
+    let currentUser = null;
+    let admin = false;
+
+    loginBtn.addEventListener('click', () => {
+      currentUser = nameInput.value.trim();
+      admin = (currentUser === adminCode);
+      loginScreen.classList.remove('active');
+      const voted = JSON.parse(localStorage.getItem('votedUsers') || '[]');
+      if (admin || voted.includes(currentUser)) showResults(); else welcomeScreen.classList.add('active');
+    });
+
+    document.getElementById('startVoteBtn').addEventListener('click', () => {
+      welcomeScreen.classList.remove('active');
+      voteScreen.classList.add('active');
+      submitBtn.disabled = true;
+      document.querySelectorAll('.candidateBtn').forEach(b => b.classList.remove('selected'));
+    });
+
+    document.querySelectorAll('.candidateBtn').forEach(btn => btn.addEventListener('click', () => {
+      document.querySelectorAll('.candidateBtn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      submitBtn.disabled = false;
+    }));
+
+    submitBtn.addEventListener('click', async () => {
+      const choice = document.querySelector('.candidateBtn.selected').dataset.name;
+      await sendVote(choice);
+      const arr = JSON.parse(localStorage.getItem('votedUsers') || '[]');
+      arr.push(currentUser);
+      localStorage.setItem('votedUsers', JSON.stringify(arr));
+      voteScreen.classList.remove('active');
+      showResults();
+    });
+
+    document.getElementById('backLoginBtn').addEventListener('click', () => {
+      resultScreen.classList.remove('active');
+      nameInput.value = ''; loginBtn.disabled = true;
+      loginScreen.classList.add('active');
+    });
+
+    document.getElementById('resetVotesBtn').addEventListener('click', async () => {
+      await resetVotes();
+      localStorage.removeItem('votedUsers');
+      showResults();
+    });
+
+    async function showResults() {
+      // Nascondi tutte le schermate
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById('resetVotesBtn').style.display = admin ? 'block' : 'none';
+      const votes = await fetchGlobalVotes();
+      const total = votes['Cristina Antonelli'] + votes['Cristina Pol'] + votes['Mi astengo'];
+      document.getElementById('votesCount').textContent = `Voti totali: ${total}`;
+      let leader = '-';
+      if (votes['Cristina Antonelli'] > votes['Cristina Pol']) leader = 'Cristina Antonelli';
+      else if (votes['Cristina Pol'] > votes['Cristina Antonelli']) leader = 'Cristina Pol';
+      document.getElementById('leading').textContent = `In testa: ${leader}`;
+      resultScreen.classList.add('active');
+    }
+  </script>
+
+</body>
+</html>
